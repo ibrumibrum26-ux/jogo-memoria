@@ -1,0 +1,476 @@
+<!DOCTYPE html> 
+<html lang="pt-br">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Jogo da Memória — HTML + CSS + JS</title>
+  <style>
+    :root{
+      --bg: #0b1020;
+      --panel: #121a35;
+      --panel-2:#0e152b;
+      --text:#eaf0ff;
+      --muted:#9fb1ff;
+      --accent:#6da3ff;
+      --accent-2:#8cf0ff;
+      --good:#49d17d;
+      --bad:#ff6b6b;
+      --gold:#ffcc3a;
+      --card:#172146;
+      --card-2:#111835;
+      --shadow: 0 10px 30px rgba(0,0,0,.35);
+      --radius: 16px;
+      --gap: 12px;
+      --cols: 4; /* atualizado via JS */
+      --cell: 110px; /* atualizado via JS para caber na tela */
+    }
+
+    [data-theme="light"]{
+      --bg:#f5f7ff;
+      --panel:#ffffff;
+      --panel-2:#f1f5ff;
+      --text:#0a1638;
+      --muted:#42507a;
+      --accent:#255ee9;
+      --accent-2:#0e9bd8;
+      --good:#1b9d62;
+      --bad:#d33a3a;
+      --gold:#c69209;
+      --card:#f0f3ff;
+      --card-2:#e6ebff;
+      --shadow: 0 10px 25px rgba(21,54,137,.12);
+    }
+
+    * { box-sizing: border-box }
+    html, body { height: 100% }
+
+    /* Mantém rolagem; removeu alinhamento central que causava sumiço dos botões */
+    body{
+      margin:0;
+      background: radial-gradient(1200px 600px at 85% -10%, var(--panel-2), transparent), var(--bg);
+      color: var(--text);
+      font: 500 16px/1.4 system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, Noto Sans, "Helvetica Neue", Arial, "Apple Color Emoji", "Segoe UI Emoji";
+      display:block;
+      padding: 16px;
+      overflow-x: hidden;
+    }
+
+    .app{ width: min(1000px, 100%); margin: 0 auto; }
+
+    .topbar{
+      display:grid; grid-template-columns: 1fr auto; gap: 12px; align-items:center; margin-bottom: 12px;
+      /* NÃO é sticky mais (evita sobreposição) */
+      position: static;
+    }
+    @media (max-width: 1200px){ .topbar{ grid-template-columns: 1fr } }
+
+    .title{ display:flex; align-items:center; gap:12px; }
+    .logo{
+      width:42px; height:42px; display:grid; place-items:center; border-radius:12px; background:linear-gradient(135deg, var(--accent), var(--accent-2)); color:white; box-shadow: var(--shadow);
+      font-weight:900; letter-spacing:.5px;
+    }
+    h1{ font-size: clamp(20px, 2.5vw, 28px); margin:0 }
+
+    .panel{ background: linear-gradient(180deg, var(--panel), var(--panel-2)); border:1px solid rgba(255,255,255,.06); border-radius: var(--radius); box-shadow: var(--shadow); }
+
+    .controls{ 
+      display:flex; flex-wrap: wrap; gap: 8px; align-items: center; padding: 8px;
+      /* Torna apenas os CONTROLES sticky para manter os botões visíveis sem sobrepor o conteúdo */
+      position: sticky; top: 8px; z-index: 50;
+    }
+
+    .select, .btn, .toggle, .input{
+      background: var(--panel); border:1px solid rgba(255,255,255,.08); color: var(--text);
+      padding: 8px 12px; border-radius: 12px; cursor:pointer; font-weight:600; transition: transform .08s ease, filter .2s ease; min-height: 38px;
+    }
+    .input{ cursor:text; min-width: 120px }
+    .select{ appearance:none; min-width: 120px }
+    .btn:hover, .select:hover, .toggle:hover{ filter: brightness(1.1) }
+    .btn:active{ transform: translateY(1px) }
+
+    .peeker{ font-size:12px; color: var(--muted) }
+
+    .stats{ display:flex; gap: 8px; align-items:center; padding: 8px; justify-content:flex-end; flex-wrap: wrap }
+    .stat{ background: var(--panel); border:1px solid rgba(255,255,255,.06); padding: 8px 10px; border-radius: 12px; min-width: 110px; text-align:center }
+    .stat b{ display:block; font-size: 11px; color: var(--muted); font-weight:700; text-transform: uppercase; letter-spacing: .8px }
+    .stat span{ font-size: 16px; font-weight:800 }
+
+    .wrap{ display:grid; grid-template-columns: 1fr; gap: 10px; align-items:start }
+    .wrap.with-help{ grid-template-columns: minmax(200px, 240px) 1fr }
+
+    /* Board com células adaptativas */
+    .board{ --cols: 4; display:grid; grid-template-columns: repeat(var(--cols), var(--cell)); grid-auto-rows: var(--cell); gap: var(--gap); padding: 12px; place-content: center; }
+
+    .help{ background: var(--panel-2); border:1px solid rgba(255,255,255,.08); border-radius: 12px; padding: 10px 12px; box-shadow: var(--shadow); }
+    .help h3{ margin: 0 0 6px; font-size: 15px }
+    .help ul{ margin: 0 0 6px 18px; padding:0; font-size: 14px }
+    .help .small{ color: var(--muted); font-size: 12px }
+    .help .close{ background: transparent; border:1px solid rgba(255,255,255,.12); padding: 4px 8px; border-radius: 8px; cursor:pointer; color: var(--text) }
+
+    .card{ width: 100%; height: 100%; border: none; background: transparent; padding:0; cursor:pointer; position:relative; perspective: 900px; outline:none; }
+    .card[aria-disabled="true"]{ cursor: default }
+
+    .card-inner{ position:absolute; inset:0; border-radius: 14px; transform-style: preserve-3d; transition: transform .5s ease; }
+    .card:not([data-flipped="true"]) .card-inner{ box-shadow: var(--shadow) }
+
+    .face{ position:absolute; inset:0; display:grid; place-items:center; backface-visibility: hidden; border-radius: 14px; border:1px solid rgba(255,255,255,.08) }
+
+    .back{ background:
+        radial-gradient(120px 80px at 30% 10%, rgba(255,255,255,.08), transparent),
+        linear-gradient(180deg, var(--card), var(--card-2));
+    }
+    .front{ background: linear-gradient(180deg, #0f1a3c, #0a122d); transform: rotateY(180deg); font-size: clamp(22px, calc(var(--cell) * .36), 40px) }
+
+    .card[data-flipped="true"] .card-inner{ transform: rotateY(180deg) }
+
+    .card.matched .face{ border-color: rgba(76, 217, 149, .35) }
+    .card.matched .front{ box-shadow: inset 0 0 0 3px rgba(76,217,149,.35) }
+
+    .toolbar{ display:flex; gap:8px; padding: 8px; justify-content:flex-end; flex-wrap: wrap }
+
+    .stars{ display:inline-flex; gap:2px; font-size: 18px }
+    .stars .dim{ opacity: .35; filter: grayscale(1) }
+
+    .announcer{ position:absolute; left:-9999px; top:auto; width:1px; height:1px; overflow:hidden }
+
+    .footer{ display:flex; justify-content:space-between; align-items:center; padding: 8px 12px; color: var(--muted); gap: 8px; flex-wrap: wrap }
+
+    .dialog { position: fixed; inset: 0; display: none; place-items: center; background: rgba(0,0,0,.5); }
+    .dialog[open] { display: grid }
+    .dialog .box{ background: var(--panel-2); border: 1px solid rgba(255,255,255,.08); border-radius: 16px; padding: 16px; width: min(620px, 92%); box-shadow: var(--shadow); }
+    .box h2{ margin:0 0 6px; font-size: 22px }
+    .box p{ margin: 6px 0 12px; color: var(--muted) }
+
+    /* Toast de dica */
+    .tip{ position: fixed; right: 12px; top: 12px; background: var(--panel-2); border:1px solid rgba(255,255,255,.08); padding: 10px 12px; border-radius: 10px; box-shadow: var(--shadow); display:flex; align-items:center; gap: 8px; max-width: min(420px, 92%); z-index: 1000 }
+    .tip[hidden]{ display: none !important }
+    .help[hidden]{ display: none !important }
+    .tip button{ background: transparent; border:1px solid rgba(255,255,255,.12); padding: 4px 8px; border-radius: 8px; cursor:pointer; color: var(--text) }
+
+    /* Responsividade */
+    @media (max-width: 900px){
+      .wrap.with-help{ grid-template-columns: 1fr }
+      .help{ margin-bottom: 6px }
+    }
+
+    @media (max-width: 1200px){
+      .topbar{ grid-template-columns: 1fr }
+      .stats{ justify-content: space-between }
+      .stat{ min-width: 100px }
+    }
+
+    @media (prefers-reduced-motion: reduce){ .card-inner{ transition: none } }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <div class="topbar">
+      <div class="title">
+        <div class="logo" aria-hidden="true">MM</div>
+        <h1>Jogo da Memória</h1>
+      </div>
+
+      <div class="controls panel" role="group" aria-label="Controles de jogo">
+        <button class="btn" id="startGame" title="Iniciar (S)">▶️ Iniciar</button>
+        <button class="btn" id="newGame" title="Preparar novo jogo (R)">🔄 Novo</button>
+        <button class="btn" id="openLB" title="Ver ranking (L)">🏆 Ranking</button>
+        <button class="btn" id="openData" title="Gerenciar dados locais">⚙️ Dados</button>
+        <button class="btn" id="toggleHelp" title="Mostrar/ocultar instruções">ℹ️ Instruções</button>
+        <label for="playerName" class="peeker">Nome</label>
+        <input id="playerName" class="input" type="text" placeholder="Seu nome" maxlength="24"/>
+        <label for="difficulty" class="peeker">Dificuldade</label>
+        <select id="difficulty" class="select" aria-label="Selecionar dificuldade">
+          <option value="4x4">Fácil — 4×4</option>
+          <option value="5x4">Médio — 5×4</option>
+          <option value="6x6">Difícil — 6×6</option>
+        </select>
+        <button class="toggle" id="themeToggle" aria-pressed="false" title="Alternar tema (T)">🌗 Tema</button>
+      </div>
+
+      <div class="stats panel" aria-live="polite">
+        <div class="stat"><b>Tempo</b><span id="time">00:00</span></div>
+        <div class="stat"><b>Movimentos</b><span id="moves">0</span></div>
+        <div class="stat"><b>Avaliação</b><span id="rating" class="stars" aria-label="3 estrelas">★ ★ ★</span></div>
+        <div class="stat"><b>Melhor</b><span id="best">—</span></div>
+      </div>
+    </div>
+
+    <div class="panel wrap with-help" id="wrap">
+      <aside id="help" class="help">
+        <h3>Como jogar</h3>
+        <ul>
+          <li>Defina a <b>dificuldade</b>.</li>
+          <li>Clique em <b>▶️ Iniciar</b> ou <b>numa carta</b> para começar.</li>
+          <li>Encontre <b>pares iguais</b>; cartas certas ficam abertas.</li>
+          <li><b>Menos movimentos</b> e <b>menor tempo</b> = melhor ranking.</li>
+          <li>Use <b>🏆</b> para ver ranking e <b>⚙️</b> para gerenciar dados.</li>
+        </ul>
+        <div class="small">Pode fechar quando quiser; não atrapalha o jogo.</div>
+        <div class="toolbar"><button class="close" id="helpClose">Fechar</button></div>
+      </aside>
+
+      <div id="board" class="board" role="grid" aria-label="Tabuleiro do jogo da memória"></div>
+
+      <div class="footer" style="grid-column: 1 / -1;">
+        <span class="peeker">Agora você pode <b>iniciar pelo botão</b> ou <b>clicando em uma carta</b>. Atalhos: <kbd>S</kbd> iniciar, <kbd>R</kbd> novo, <kbd>L</kbd> ranking, <kbd>T</kbd> tema.</span>
+        <span class="peeker">Feito com HTML, CSS e JavaScript — sem bibliotecas externas.</span>
+      </div>
+    </div>
+
+    <!-- Dialogo de vitória -->
+    <div id="dialog" class="dialog" aria-modal="true" role="dialog">
+      <div class="box">
+        <h2 id="dialogTitle">Parabéns! 🎉</h2>
+        <p id="dialogBody">Você completou o jogo.</p>
+        <div id="dialogExtra"></div>
+        <div class="toolbar">
+          <button class="btn" id="playAgain">Preparar de novo</button>
+          <button class="btn" id="closeDialog">Fechar</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Dialogo de Ranking -->
+    <div id="lbDialog" class="dialog" aria-modal="true" role="dialog">
+      <div class="box">
+        <h2>Ranking — Melhores tempos/movimentos</h2>
+        <p class="peeker">Por dificuldade. Critério: menor tempo; empate por menos movimentos.</p>
+        <ol id="lbList"></ol>
+        <div class="toolbar">
+          <button class="btn" id="closeLB">Fechar</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Dialogo de Dados (opções avançadas) -->
+    <div id="dataDialog" class="dialog" aria-modal="true" role="dialog">
+      <div class="box">
+        <h2>Gerenciar dados locais</h2>
+        <p class="peeker">Essas ações afetam somente este navegador/dispositivo.</p>
+        <div class="toolbar">
+          <button class="btn" id="clearMine">Apagar <b>meus</b> registros desta dificuldade</button>
+        </div>
+        <details>
+          <summary>Apagar ranking desta dificuldade (avançado)</summary>
+          <p class="peeker">Digite <b>APAGAR</b> para habilitar:</p>
+          <input id="wipeConfirm" class="input" placeholder="APAGAR"/>
+          <div class="toolbar">
+            <button class="btn" id="wipeAll" disabled>Apagar ranking</button>
+          </div>
+        </details>
+        <div class="toolbar">
+          <button class="btn" id="closeData">Fechar</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Toast de importância do jogo -->
+    <div id="tip" class="tip" hidden>
+      <span>Jogo da memória treina atenção, velocidade e memória de trabalho. 2–5 min já ajudam.</span>
+      <button id="tipClose" title="Fechar">✖</button>
+    </div>
+
+    <div id="announcer" class="announcer" aria-live="polite"></div>
+  </div>
+
+  <script>
+  (()=>{
+    const $ = (sel, root=document) => root.querySelector(sel);
+    const $$ = (sel, root=document) => [...root.querySelectorAll(sel)];
+    const pad = n => String(n).padStart(2,'0');
+    const fmtTime = s => `${pad(Math.floor(s/60))}:${pad(s%60)}`;
+
+    const ICONS = ['🍎','🚀','🎧','🐶','🏀','📚','🌈','🍩','🎲','🧩','🌵','⚽','🎸','🦄','🍔','✈️','💡','🔑','🛸','🍓','🐱','⛵','⌛','🌙','🔥','❄️','⚡','🌻','🎯','🧠','🔔','🪐','🧪','🎁','🎨','📷','🎵','🛡️','💎','🧁','🎮','🥇','🧿','📀','🧭'];
+    const LEVELS = { '4x4': { cols:4, rows:4 }, '5x4': { cols:5, rows:4 }, '6x6': { cols:6, rows:6 } };
+
+    const board = $('#board'); const timeEl = $('#time'); const movesEl = $('#moves'); const ratingEl = $('#rating'); const bestEl = $('#best'); const announcer = $('#announcer');
+    const dialog = $('#dialog'); const dialogTitle = $('#dialogTitle'); const dialogBody = $('#dialogBody'); const dialogExtra = $('#dialogExtra');
+    const lbDialog = $('#lbDialog'); const lbList = $('#lbList');
+    const startBtn = $('#startGame'); const newGameBtn = $('#newGame'); const themeToggle = $('#themeToggle'); const openLBBtn = $('#openLB'); const openDataBtn = $('#openData');
+    const clearMineBtn = $('#clearMine'); const wipeAllBtn = $('#wipeAll'); const wipeConfirm = $('#wipeConfirm'); const nameInput = $('#playerName');
+    const playAgainBtn = $('#playAgain'); const closeDialogBtn = $('#closeDialog'); const closeLBBtn = $('#closeLB'); const closeDataBtn = $('#closeData');
+    const tip = $('#tip'); const tipClose = $('#tipClose'); const difficultySel = $('#difficulty'); const wrap = $('#wrap'); const help = $('#help'); const helpClose = $('#helpClose'); const toggleHelp = $('#toggleHelp');
+
+    let state = {};
+
+    function fitBoard(){
+      const levelKey = state.level || (LEVELS[difficultySel?.value] ? difficultySel.value : '4x4');
+      const { cols, rows } = LEVELS[levelKey];
+      const gap = parseFloat(getComputedStyle(board).gap) || 12;
+      const app = $('.app');
+      const topbar = $('.topbar');
+      const footer = $('.footer');
+      const availW = Math.max(320, app.clientWidth - 24);
+      const headerH = topbar.offsetHeight + 16;
+      const footerH = (footer?.offsetHeight || 0) + 28;
+      const availH = Math.max(320, window.innerHeight - headerH - footerH);
+      const sizeW = Math.floor((availW - 24 - gap * (cols - 1)) / cols);
+      const sizeH = Math.floor((availH - 24 - gap * (rows - 1)) / rows);
+      const size = Math.max(46, Math.min(sizeW, sizeH));
+      board.style.setProperty('--cell', size + 'px');
+      positionTip();
+    }
+
+    window.addEventListener('resize', ()=>{ fitBoard(); positionTip(); });
+    window.addEventListener('scroll', positionTip, { passive:true });
+
+    function positionTip(){
+      if(!tip) return;
+      const anchor = document.querySelector('.controls') || document.querySelector('.topbar');
+      const rect = anchor.getBoundingClientRect();
+      const top = Math.max(12, rect.bottom + 8);
+      tip.style.top = top + 'px';
+      tip.style.right = '12px';
+    }
+
+    function shuffle(arr){ for(let i = arr.length - 1; i > 0; i--){ const j = Math.floor(Math.random() * (i+1)); [arr[i], arr[j]] = [arr[j], arr[i]]; } return arr; }
+    function sampleUnique(arr, n){ const copy = [...arr]; shuffle(copy); return copy.slice(0, n); }
+
+    const lbKey = level => `memory-leaderboard-${level}`;
+
+    function getPlayerName(){ const v = (nameInput.value || '').trim(); return v || 'Jogador'; }
+    function loadLB(level){ try{ return JSON.parse(localStorage.getItem(lbKey(level))||'[]'); }catch{ return [] } }
+    function saveLB(level, arr){ localStorage.setItem(lbKey(level), JSON.stringify(arr)); }
+
+    function addScore(level, score){ const list = loadLB(level); list.push(score); list.sort((a,b)=> a.time - b.time || a.moves - b.moves ); const top = list.slice(0, 10); saveLB(level, top); return { top, index: top.findIndex(s=> s === score) }; }
+    function updateBestLabel(level){ const top = loadLB(level); if(!top.length){ bestEl.textContent = '—'; return } const b = top[0]; bestEl.textContent = `${fmtTime(b.time)} · ${b.moves} mov.` }
+
+    function starString(n){ const s = ['★','★','★']; for(let i=0;i<3;i++){ if(i>=n) s[i] = '☆' } return s.join(' '); }
+    function ratingFor(moves, pairs){ const t2 = Math.ceil(pairs * 2.2); const t1 = Math.ceil(pairs * 3.2); if(moves <= t2) return 3; if(moves <= t1) return 2; return 1; }
+    function updateStats(){ movesEl.textContent = String(state.moves); const r = ratingFor(state.moves, state.pairs); ratingEl.textContent = starString(r); ratingEl.setAttribute('aria-label', `${r} ${r===1?'estrela':'estrelas'}`); }
+
+    function startTimer(){ if(state.timerId) return; state.startedAt = Date.now(); state.timerId = setInterval(()=>{ const s = Math.floor((Date.now() - state.startedAt)/1000); state.elapsed = s; timeEl.textContent = fmtTime(s); }, 250); }
+    function stopTimer(){ if(state.timerId){ clearInterval(state.timerId); state.timerId = null; } }
+    function announce(msg){ announcer.textContent = msg }
+
+    function cardTemplate(symbol, uid){
+      const btn = document.createElement('button');
+      btn.className = 'card'; btn.type = 'button'; btn.setAttribute('role', 'gridcell'); btn.setAttribute('aria-label', 'Carta virada para baixo'); btn.dataset.symbol = symbol; btn.dataset.uid = uid;
+      btn.innerHTML = `<div class="card-inner"><div class="face back" aria-hidden="true">◼︎</div><div class="face front" aria-hidden="true">${symbol}</div></div>`;
+      btn.addEventListener('click', onFlip);
+      btn.addEventListener('keydown', (e)=>{ if(e.key === 'Enter' || e.key === ' '){ e.preventDefault(); btn.click(); } });
+      return btn;
+    }
+
+    function lockBoard(v){ state.locked = v; board.setAttribute('aria-busy', v? 'true':'false'); }
+
+    function onFlip(e){
+      if(!state.started){ startGame(); return; }
+      const card = e.currentTarget; if(state.locked) return; if(card.classList.contains('matched')) return; if(card.dataset.flipped === 'true') return;
+      if(!state.timerId) startTimer();
+      flip(card, true);
+      if(!state.first){ state.first = card; return; }
+      state.second = card; state.moves += 1; updateStats(); checkMatch();
+    }
+
+    function flip(card, on){ card.dataset.flipped = on ? 'true' : 'false'; card.setAttribute('aria-pressed', on ? 'true' : 'false'); card.setAttribute('aria-label', on ? `Carta: ${card.dataset.symbol}` : 'Carta virada para baixo'); }
+
+    function checkMatch(){
+      if(!state.first || !state.second) return;
+      const a = state.first.dataset.symbol; const b = state.second.dataset.symbol; const sameCard = state.first.dataset.uid === state.second.dataset.uid;
+      if(sameCard){ flip(state.second, false); state.second = null; return; }
+      lockBoard(true);
+      if(a === b){ setTimeout(()=>{ state.first.classList.add('matched'); state.second.classList.add('matched'); state.first.setAttribute('aria-disabled', 'true'); state.second.setAttribute('aria-disabled', 'true'); announce('Par combinado!'); state.matched += 2; resetPick(); lockBoard(false); if(state.matched === state.total){ onWin(); } }, 260); }
+      else { setTimeout(()=>{ flip(state.first, false); flip(state.second, false); announce('Não combinou. Tente novamente.'); resetPick(); lockBoard(false); }, 650); }
+    }
+
+    function resetPick(){ state.first = null; state.second = null; }
+
+    function buildDeck(level){ const { cols, rows } = LEVELS[level]; const total = cols * rows; const pairs = total / 2; const uniques = sampleUnique(ICONS, pairs); const deck = shuffle([...uniques, ...uniques]).map((sym, i)=>({ sym, uid: `${sym}-${i}-${Math.random().toString(36).slice(2,7)}` })); return { deck, cols, rows, total, pairs }; }
+
+    // +1s no peek padrão e removido "peek extra"
+    function basePeek(pairs){
+      const ms = 1200 + pairs * 140 + 1000; // +1s
+      return Math.max(1800, Math.min(5000, ms));
+    }
+    function peekDuration(){ return basePeek(state.pairs); }
+
+    function renderBoard(level){
+      const { deck, cols, rows, total, pairs } = buildDeck(level);
+      board.style.setProperty('--cols', cols); board.innerHTML = ''; board.setAttribute('aria-rowcount', rows); board.setAttribute('aria-colcount', cols);
+      deck.forEach(({sym, uid})=> board.appendChild(cardTemplate(sym, uid)) );
+      state.level = level; state.total = total; state.pairs = pairs; state.matched = 0; state.moves = 0; state.elapsed = 0; state.first = null; state.second = null; state.locked = false; state.started = false;
+      stopTimer(); timeEl.textContent = '00:00'; updateStats(); updateBestLabel(level);
+      fitBoard(); announce('Clique em ▶️ Iniciar ou numa carta para começar.'); startBtn.disabled = false; positionTip();
+    }
+
+    function startGame(){
+      if(state.started) return;
+      const ms = peekDuration();
+      if(!tip.hasAttribute('hidden')) tip.setAttribute('hidden','');
+      lockBoard(true); $$(".card", board).forEach(c => flip(c, true)); announce('Memorize as cartas…');
+      setTimeout(()=>{ $$(".card", board).forEach(c => { if(!c.classList.contains('matched')) flip(c, false); }); lockBoard(false); state.started = true; startTimer(); announce('Comece!'); }, ms);
+      startBtn.disabled = true;
+    }
+
+    function onWin(){
+      stopTimer(); const r = ratingFor(state.moves, state.pairs); const t = state.elapsed;
+      const score = { time: t, moves: state.moves, date: Date.now(), rating: r, name: getPlayerName() };
+      const { top, index } = addScore(state.level, score); updateBestLabel(state.level);
+      dialogTitle.textContent = 'Parabéns! 🎉 Você venceu!'; dialogBody.textContent = `Tempo: ${fmtTime(t)} · Movimentos: ${state.moves} · Avaliação: ${r}/3`;
+      const podium = top.slice(0,3).map((s,i)=> `${i===0?'🥇':i===1?'🥈':'🥉'} ${fmtTime(s.time)} · ${s.moves} mov. — <b>${(s.name||'Jogador')}</b>`).join('<br>');
+      dialogExtra.innerHTML = `<p><b>Sua posição:</b> #${index+1} nesta dificuldade</p><p>${podium}</p>`;
+      dialog.setAttribute('open',''); startBtn.disabled = false; state.started = false;
+    }
+
+    function renderLB(){ const level = state.level; const list = loadLB(level); if(!list.length){ lbList.innerHTML = '<li>Nenhum resultado ainda. Jogue uma partida! 🎮</li>'; return } lbList.innerHTML = list.map((s,i)=>{ const d = new Date(s.date); const when = d.toLocaleDateString(undefined, { day:'2-digit', month:'2-digit', year:'numeric' }); const nm = (s.name||'Jogador').replace(/[<>]/g,''); return `<li><b>#${i+1}</b> — <b>${fmtTime(s.time)}</b> · ${s.moves} mov. — <b>${nm}</b> <span class="peeker">(${when})</span></li>`; }).join(''); }
+
+    function renderDataDialog(){ wipeConfirm.value = ''; wipeAllBtn.disabled = true; }
+
+    startBtn.addEventListener('click', startGame);
+    difficultySel.addEventListener('change', ()=> renderBoard(difficultySel.value));
+    newGameBtn.addEventListener('click', ()=> { renderBoard(difficultySel.value); nameInput.value=''; });
+    openLBBtn.addEventListener('click', ()=>{ renderLB(); lbDialog.setAttribute('open',''); });
+    closeLBBtn.addEventListener('click', ()=> lbDialog.removeAttribute('open'));
+    openDataBtn.addEventListener('click', ()=>{ renderDataDialog(); document.getElementById('dataDialog').setAttribute('open',''); });
+    closeDataBtn.addEventListener('click', ()=> document.getElementById('dataDialog').removeAttribute('open'));
+    wipeConfirm.addEventListener('input', ()=>{ wipeAllBtn.disabled = (wipeConfirm.value.trim().toUpperCase() !== 'APAGAR'); });
+    clearMineBtn.addEventListener('click', ()=>{ const me = (nameInput.value||'').trim(); if(!me){ alert('Digite seu nome na caixa "Nome" para apagar seus registros.'); return; } const list = loadLB(state.level).filter(s => (s.name||'Jogador') !== me); saveLB(state.level, list); renderLB(); updateBestLabel(state.level); });
+    wipeAllBtn.addEventListener('click', ()=>{ localStorage.removeItem(lbKey(state.level)); renderLB(); updateBestLabel(state.level); wipeAllBtn.disabled = true; });
+
+    themeToggle.addEventListener('click', ()=>{ const isLight = document.documentElement.getAttribute('data-theme') === 'light'; document.documentElement.setAttribute('data-theme', isLight ? 'dark' : 'light'); themeToggle.setAttribute('aria-pressed', String(!isLight)); localStorage.setItem('memory-theme', isLight ? 'dark' : 'light'); });
+
+    playAgainBtn.addEventListener('click', ()=> { dialog.removeAttribute('open'); renderBoard(difficultySel.value); nameInput.value=''; });
+    closeDialogBtn.addEventListener('click', ()=> dialog.removeAttribute('open'));
+
+    toggleHelp.addEventListener('click', ()=>{ if(!help) return; const hidden = help.hasAttribute('hidden'); if(hidden){ help.removeAttribute('hidden'); wrap.classList.add('with-help'); } else { help.setAttribute('hidden',''); wrap.classList.remove('with-help'); } fitBoard(); });
+    helpClose.addEventListener('click', ()=>{ help.setAttribute('hidden',''); wrap.classList.remove('with-help'); fitBoard(); });
+
+    // Ignora atalhos se o usuário estiver digitando (inputs/textarea/contenteditable)
+    function isTypingTarget(el){
+      if(!el) return false;
+      const tag = el.tagName?.toLowerCase();
+      return tag === 'input' || tag === 'textarea' || el.isContentEditable;
+    }
+
+    document.addEventListener('keydown', (e)=>{
+      if (isTypingTarget(e.target)) return; // <-- evita conflito ao digitar o nome
+      const k = e.key.toLowerCase();
+      if(k === 's'){ startBtn.click(); }
+      if(k === 'r'){ renderBoard(difficultySel.value); nameInput.value=''; }
+      if(k === 't'){ themeToggle.click(); }
+      if(k === 'l'){ openLBBtn.click(); }
+      if(e.key === 'Escape'){
+        if(dialog.hasAttribute('open')) dialog.removeAttribute('open');
+        if(lbDialog.hasAttribute('open')) lbDialog.removeAttribute('open');
+        const dataDlg = document.getElementById('dataDialog');
+        if(dataDlg.hasAttribute('open')) dataDlg.removeAttribute('open');
+        if(!tip.hasAttribute('hidden')) tip.setAttribute('hidden','');
+      }
+    });
+
+    function showTip(){ positionTip(); tip.removeAttribute('hidden'); }
+    tipClose.addEventListener('click', (e)=>{ e.stopPropagation(); tip.setAttribute('hidden',''); });
+
+    (function init(){
+      const savedTheme = localStorage.getItem('memory-theme') || (matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark');
+      document.documentElement.setAttribute('data-theme', savedTheme);
+      themeToggle.setAttribute('aria-pressed', String(savedTheme==='light'));
+      nameInput.value = '';
+      renderBoard(difficultySel.value);
+      setTimeout(showTip, 1000);
+    })();
+  })();
+  </script>
+</body>
+</html>
